@@ -24,7 +24,7 @@ def check_password():
 
     # Show input for password
     st.text_input(
-        "Password", 
+        "Please Enter the Encrypted UFS Password", 
         type="password", 
         on_change=password_entered, 
         key="password"
