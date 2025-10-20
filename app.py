@@ -153,7 +153,7 @@ def generate_sample_questions(df, table_name="test"):
 
 
 # Sidebar - Training Data Management
-st.sidebar.title("🎓 Training Data")
+st.sidebar.title("Training Data")
 
 # Upload CSV for training
 uploaded_file = st.sidebar.file_uploader(
