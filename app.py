@@ -1,46 +1,10 @@
 import time
 import streamlit as st
 import pandas as pd
-import hmac
 
 # ============================================
-# AUTHENTICATION - Keep this at the very top
-# ============================================
-
-def check_password():
-    """Returns `True` if the user had the correct password."""
-
-    def password_entered():
-        """Checks whether a password entered by the user is correct."""
-        if hmac.compare_digest(st.session_state["password"], st.secrets["password"]):
-            st.session_state["password_correct"] = True
-            del st.session_state["password"]  # Don't store the password
-        else:
-            st.session_state["password_correct"] = False
-
-    # Return True if the password is validated
-    if st.session_state.get("password_correct", False):
-        return True
-
-    # Show input for password
-    st.text_input(
-        "Please Enter the Encrypted UFS Password", 
-        type="password", 
-        on_change=password_entered, 
-        key="password"
-    )
-    
-    if "password_correct" in st.session_state:
-        st.error("ERROR: Incorrect Password!")
-    
-    return False
-
-
-if not check_password():
-    st.stop()  # Stop here if password is incorrect
-
-# ============================================
-# YOUR ORIGINAL APP CODE STARTS HERE
+# YOUR APP CODE STARTS HERE
+# No password protection needed - handled by Streamlit Cloud!
 # ============================================
 
 from vanna_calls import (
@@ -153,7 +117,7 @@ def generate_sample_questions(df, table_name="test"):
 
 
 # Sidebar - Training Data Management
-st.sidebar.title("Training Data")
+st.sidebar.title("🎓 Training Data")
 
 # Upload CSV for training
 uploaded_file = st.sidebar.file_uploader(
@@ -166,8 +130,20 @@ if uploaded_file is not None:
     try:
         df_training = pd.read_csv(uploaded_file)
         
-        # Normalize DataFrame column names to lowercase IMMEDIATELY for PostgreSQL
-        df_training.columns = df_training.columns.str.lower()
+        # Normalize DataFrame column names for PostgreSQL compatibility
+        # 1. Convert to lowercase
+        # 2. Replace hyphens with underscores
+        # 3. Replace spaces with underscores
+        # 4. Remove other special characters
+        df_training.columns = (
+            df_training.columns
+            .str.lower()
+            .str.replace('-', '_', regex=False)
+            .str.replace(' ', '_', regex=False)
+            .str.replace(r'[^\w]', '_', regex=True)  # Replace any non-alphanumeric with underscore
+            .str.replace(r'_+', '_', regex=True)  # Replace multiple underscores with single
+            .str.strip('_')  # Remove leading/trailing underscores
+        )
         
         # Show preview
         st.sidebar.success(f"✅ Loaded: {len(df_training)} rows × {len(df_training.columns)} columns")
@@ -179,7 +155,7 @@ if uploaded_file is not None:
             st.sidebar.dataframe(df_training.head(3), use_container_width=True)
         
         # Train button
-        if st.sidebar.button("Train Model", use_container_width=True, type="primary"):
+        if st.sidebar.button("🚀 Train Model", use_container_width=True, type="primary"):
             vn = setup_vanna()
             
             progress_bar = st.sidebar.progress(0)
@@ -391,7 +367,7 @@ st.sidebar.divider()
 st.sidebar.button("🔄 Reset Chat", on_click=lambda: st.session_state.update({"my_question": None}), use_container_width=True)
 
 # Main title
-st.title("🤖 United Field Services Data AI - Natural Language Database")
+st.title("🤖 Vanna AI - Natural Language Database Query")
 st.caption("Ask questions about your data in plain English")
 
 
