@@ -117,7 +117,7 @@ def generate_sample_questions(df, table_name="test"):
 
 
 # Sidebar - Training Data Management
-st.sidebar.title("🎓 Training Data")
+st.sidebar.title("Training Data")
 
 # Upload CSV for training
 uploaded_file = st.sidebar.file_uploader(
@@ -155,7 +155,7 @@ if uploaded_file is not None:
             st.sidebar.dataframe(df_training.head(3), use_container_width=True)
         
         # Train button
-        if st.sidebar.button("🚀 Train Model", use_container_width=True, type="primary"):
+        if st.sidebar.button("Train Model", use_container_width=True, type="primary"):
             vn = setup_vanna()
             
             progress_bar = st.sidebar.progress(0)
@@ -367,7 +367,7 @@ st.sidebar.divider()
 st.sidebar.button("🔄 Reset Chat", on_click=lambda: st.session_state.update({"my_question": None}), use_container_width=True)
 
 # Main title
-st.title("🤖 Vanna AI - Natural Language Database Query")
+st.title("🤖 United Field Services Data AI - Natural Language Database")
 st.caption("Ask questions about your data in plain English")
 
 
