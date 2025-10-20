@@ -367,7 +367,7 @@ st.sidebar.divider()
 st.sidebar.button("🔄 Reset Chat", on_click=lambda: st.session_state.update({"my_question": None}), use_container_width=True)
 
 # Main title
-st.title("🤖 United Field Services Data AI - Natural Language Database")
+st.title("🤖 UFS Database AI - Natural Language Database")
 st.caption("Ask questions about your data in plain English")
 
 
