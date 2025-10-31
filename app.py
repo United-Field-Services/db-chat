@@ -2,11 +2,6 @@ import time
 import streamlit as st
 import pandas as pd
 
-# ============================================
-# YOUR APP CODE STARTS HERE
-# No password protection needed - handled by Streamlit Cloud!
-# ============================================
-
 from vanna_calls import (
     generate_questions_cached,
     generate_sql_cached,
@@ -22,7 +17,7 @@ from vanna_calls import (
     remove_training_data
 )
 
-avatar_url = "https://vanna.ai/img/vanna.svg"
+avatar_url = "C:/ufs/tasks/db_chat_app/vanna-streamlit/static/Robot.jpg"
 
 st.set_page_config(layout="wide")
 
@@ -436,6 +431,15 @@ if my_question:
                     assistant_message_table.dataframe(df.head(10))
                 else:
                     assistant_message_table.dataframe(df)
+                                
+                csv = df.to_csv(index=False).encode('utf-8')
+                assistant_message_table.download_button(
+                    label="📥 Download Full Results as CSV",
+                    data=csv,
+                    file_name=f"query_results_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                    mime="text/csv",
+                    key=f"download_{pd.Timestamp.now().timestamp()}"
+                )
 
             if should_generate_chart_cached(question=my_question, sql=sql, df=df):
 

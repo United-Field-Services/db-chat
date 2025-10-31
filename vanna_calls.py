@@ -1,92 +1,133 @@
 import streamlit as st
-
 from vanna.remote import VannaDefault
 import psycopg2
-
 from sqlalchemy import create_engine, text
+from supabase import create_client, Client
 
-def table_exists(engine, table_name):
-    """Check if table exists using SQLAlchemy engine"""
+# ============================================
+# SUPABASE REST API CLIENT (for data insertion)
+# ============================================
+
+@st.cache_resource
+def get_supabase_client() -> Client:
+    """Initialize Supabase client for REST API operations"""
+    url = st.secrets["SUPABASE_URL"]
+    key = st.secrets["SUPABASE_KEY"]
+    return create_client(url, key)
+
+
+def create_table_from_dataframe(df, table_name):
+    """
+    Create/recreate table in Supabase using direct psycopg2 connection
+    """
+    import psycopg2
+    
     try:
-        with engine.connect() as conn:
-            result = conn.execute(text("""
-                SELECT EXISTS (
-                    SELECT FROM information_schema.tables 
-                    WHERE table_schema = 'public' 
-                    AND table_name = :table_name
-                );
-            """), {"table_name": table_name})
-            exists = result.fetchone()[0]
-            return exists
+        # Type mapping for PostgreSQL
+        type_mapping = {
+            'int64': 'INTEGER',
+            'float64': 'REAL',
+            'object': 'TEXT',
+            'bool': 'BOOLEAN',
+            'datetime64[ns]': 'TIMESTAMP'
+        }
+        
+        # Build column definitions
+        columns = []
+        for col in df.columns:
+            dtype = str(df[col].dtype)
+            sql_type = type_mapping.get(dtype, 'TEXT')
+            col_lower = col.lower()
+            columns.append(f"{col_lower} {sql_type}")
+        
+        # Build connection string
+        conn_string = (
+            f"host={st.secrets['DB_HOST']} "
+            f"dbname={st.secrets['DB_NAME']} "
+            f"user={st.secrets['DB_USER']} "
+            f"password={st.secrets['DB_PASSWORD']} "
+            f"port={st.secrets['DB_PORT']}"
+        )
+        
+        # Connect and execute DDL
+        conn = psycopg2.connect(conn_string)
+        conn.autocommit = True
+        cursor = conn.cursor()
+        
+        # Drop existing table and create new one
+        drop_sql = f"DROP TABLE IF EXISTS {table_name} CASCADE;"
+        create_sql = f"CREATE TABLE {table_name} ({', '.join(columns)});"
+        
+        cursor.execute(drop_sql)
+        cursor.execute(create_sql)
+        
+        cursor.close()
+        conn.close()
+        
+        return {"status": "success", "message": f"Table '{table_name}' created successfully"}
+        
     except Exception as e:
-        print(f"Error checking table existence: {e}")
-        return False
+        return {"status": "error", "message": f"Error creating table: {str(e)}"}
+
 
 def insert_csv_to_database(df, table_name):
-    # Create SQLAlchemy connection string
-    connection_string = (
-        f"postgresql://{st.secrets['DB_USER']}:{st.secrets['DB_PASSWORD']}"
-        f"@{st.secrets['DB_HOST']}:{st.secrets['DB_PORT']}/{st.secrets['DB_NAME']}"
-    )
-    
-    engine = None
+    """
+    Insert DataFrame to Supabase using REST API
+    This works reliably on Streamlit Cloud (uses HTTPS)
+    """
     try:
-        # Create SQLAlchemy engine
-        engine = create_engine(connection_string)
+        # First, create/recreate the table with correct schema
+        create_result = create_table_from_dataframe(df, table_name)
+        if create_result["status"] != "success":
+            return create_result
         
-        # Check if table already exists
-        if table_exists(engine, table_name):
-            # Table exists, so drop it and recreate with new schema
-            with engine.begin() as connection:
-                connection.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
-            
-            # Insert new data (this will create the table with the correct schema)
-            df.to_sql(
-                name=table_name,
-                con=engine,
-                if_exists='replace',
-                index=False
-            )
-            
-            rows_inserted = len(df)
-            
-            return {
-                "status": "success",
-                "message": f"Table '{table_name}' replaced and {rows_inserted} new rows inserted.",
-                "rows_inserted": rows_inserted
-            }
-        else:
-            # Table doesn't exist, so create it and insert the data
-            df.to_sql(
-                name=table_name,
-                con=engine,
-                if_exists='replace',
-                index=False
-            )
-            
-            rows_inserted = len(df)
-            
-            return {
-                "status": "success",
-                "message": f"Table '{table_name}' created and {rows_inserted} rows inserted successfully.",
-                "rows_inserted": rows_inserted
-            }
+        # Clean the data: replace NaN with None (null in JSON)
+        df_clean = df.replace({float('nan'): None})
         
+        # Also handle inf values if any
+        import numpy as np
+        df_clean = df_clean.replace([np.inf, -np.inf], None)
+        
+        # Convert DataFrame to list of dictionaries
+        data = df_clean.to_dict('records')
+        
+        # Now insert data using Supabase REST API
+        supabase = get_supabase_client()
+        
+        # Insert new data in batches (Supabase has a limit per request)
+        batch_size = 1000
+        total_inserted = 0
+        
+        for i in range(0, len(data), batch_size):
+            batch = data[i:i + batch_size]
+            response = supabase.table(table_name).upsert(batch).execute()
+            total_inserted += len(batch)
+        
+        return {
+            "status": "success",
+            "message": f"Table recreated and {total_inserted} rows inserted into '{table_name}'",
+            "rows_inserted": total_inserted
+        }
+    
     except Exception as e:
         return {
             "status": "error",
             "message": f"Error inserting data: {str(e)}",
             "rows_inserted": 0
         }
-    
-    finally:
-        # Always dispose of the engine
-        if engine is not None:
-            engine.dispose()
+
+
+# ============================================
+# VANNA SETUP (for SQL generation and queries)
+# ============================================
 
 @st.cache_resource(ttl=3600)
 def setup_vanna():
+    """Setup Vanna with PostgreSQL connection for querying"""
     vn = VannaDefault(api_key=st.secrets.get("VANNA_API_KEY"), model='artman-jr')
+    
+    # Vanna uses direct PostgreSQL connection for running queries
+    # This should work because Vanna runs queries, not Streamlit Cloud
     vn.connect_to_postgres(
         host=st.secrets["DB_HOST"],
         dbname=st.secrets["DB_NAME"],
@@ -95,6 +136,11 @@ def setup_vanna():
         port=st.secrets["DB_PORT"]
     )
     return vn
+
+
+# ============================================
+# VANNA CACHED FUNCTIONS
+# ============================================
 
 @st.cache_data(show_spinner="Generating sample questions ...")
 def generate_questions_cached():
@@ -107,20 +153,24 @@ def generate_sql_cached(question: str):
     vn = setup_vanna()
     return vn.generate_sql(question=question, allow_llm_to_see_data=True)
 
+
 @st.cache_data(show_spinner="Checking for valid SQL ...")
 def is_sql_valid_cached(sql: str):
     vn = setup_vanna()
     return vn.is_sql_valid(sql=sql)
+
 
 @st.cache_data(show_spinner="Running SQL query ...")
 def run_sql_cached(sql: str):
     vn = setup_vanna()
     return vn.run_sql(sql=sql)
 
+
 @st.cache_data(show_spinner="Checking if we should generate a chart ...")
 def should_generate_chart_cached(question, sql, df):
     vn = setup_vanna()
     return vn.should_generate_chart(df=df)
+
 
 @st.cache_data(show_spinner="Generating Plotly code ...")
 def generate_plotly_code_cached(question, sql, df):
@@ -140,10 +190,12 @@ def generate_followup_cached(question, sql, df):
     vn = setup_vanna()
     return vn.generate_followup_questions(question=question, sql=sql, df=df)
 
+
 @st.cache_data(show_spinner="Generating summary ...")
 def generate_summary_cached(question, df):
     vn = setup_vanna()
     return vn.generate_summary(question=question, df=df)
+
 
 def remove_training_data(vn):
     """Remove all training data from the model"""
@@ -229,36 +281,23 @@ def remove_training_data(vn):
             "message": f"Error removing training data: {str(e)}",
             "removed_count": 0
         }
-        
+
 
 def drop_table_if_exists(table_name):
-    """Drop a table if it exists in the database"""
-
-    
-    connection_string = (
-        f"postgresql://{st.secrets['DB_USER']}:{st.secrets['DB_PASSWORD']}"
-        f"@{st.secrets['DB_HOST']}:{st.secrets['DB_PORT']}/{st.secrets['DB_NAME']}"
-    )
-    
-    engine = None
+    """Drop a table using Supabase REST API"""
     try:
-        engine = create_engine(connection_string)
+        supabase = get_supabase_client()
         
-        with engine.begin() as connection:
-            # Drop table if exists
-            connection.execute(text(f"DROP TABLE IF EXISTS {table_name} CASCADE"))
+        # Delete all rows from the table
+        supabase.table(table_name).delete().neq('id', -999999).execute()
         
         return {
             "status": "success",
-            "message": f"Table '{table_name}' dropped successfully (if it existed)"
+            "message": f"Table '{table_name}' cleared successfully"
         }
         
     except Exception as e:
         return {
             "status": "error",
-            "message": f"Error dropping table: {str(e)}"
+            "message": f"Error clearing table: {str(e)}"
         }
-    
-    finally:
-        if engine is not None:
-            engine.dispose()
