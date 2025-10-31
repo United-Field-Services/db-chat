@@ -17,7 +17,7 @@ from vanna_calls import (
     remove_training_data
 )
 
-avatar_url = "https://raw.githubusercontent.com/kevinufs/db-chat/main/static/Robot.jpg"
+avatar_url = "https://raw.githubusercontent.com/kevinufs/db-chat/refs/heads/main/static/Robot.jpg?token=GHSAT0AAAAAADNPZPF2CSMVNXFRWRNMK7TQ2IE6KTA"
 
 st.set_page_config(layout="wide")
 
