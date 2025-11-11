@@ -17,8 +17,15 @@ from vanna_calls import (
     remove_training_data
 )
 
-avatar_url = "https://raw.githubusercontent.com/kevinufs/db-chat/refs/heads/main/static/Robot.jpg?token=GHSAT0AAAAAADNPZPF2CSMVNXFRWRNMK7TQ2IE6KTA"
-
+avatar_url = "https://raw.githubusercontent.com/United-Field-Services/db-chat/refs/heads/main/static/Robot.jpg?token=GHSAT0AAAAAADNPZPF2HD3QCXGXTQQG3N5G2ITGKTA"
+try:
+    import requests
+    response = requests.head(avatar_url, timeout=2)
+    if response.status_code != 200:
+        avatar_url = "https://static.vecteezy.com/system/resources/previews/026/797/679/large_2x/virtual-assistant-with-3d-render-ai-robot-illustration-png.png"
+except:
+    avatar_url = "https://static.vecteezy.com/system/resources/previews/026/797/679/large_2x/virtual-assistant-with-3d-render-ai-robot-illustration-png.png"
+    
 st.set_page_config(layout="wide")
 
 # Hardcoded table name
